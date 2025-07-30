@@ -120,15 +120,20 @@ export const useEmployeeStore = defineStore('employees', {
       }
     },
 
-    fetchAllEmployeesOnce() {
-      const saved = localStorage.getItem('employees');
-      if (saved) {
-        this.allEmployees = JSON.parse(saved);
-      } else {
-        this.forceReloadEmployees();
-      }
-    },
-    
+    async fetchAllEmployeesOnce() {
+    if (this.allEmployees.length > 0) return;
+
+    try {
+      const res = await fetch('/employees.json');
+      const data = await res.json();
+      this.allEmployees = data;
+      localStorage.setItem('employees', JSON.stringify(data));
+    } catch (err) {
+      console.error('Ошибка загрузки сотрудников:', err);
+    }
+  }
+
+      
 
   }
 }) 
