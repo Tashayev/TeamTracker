@@ -50,7 +50,9 @@ const store = useEmployeeStore();
 const props = defineProps<{ filterKey: string }>();
 
 onMounted(() => {
-  store.fetchAllEmployeesOnce();
+  if (store.allEmployees.length === 0) {
+    store.forceReloadEmployees();
+  }
 });
 
 const perPage = 6;

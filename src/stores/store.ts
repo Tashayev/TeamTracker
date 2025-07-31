@@ -59,7 +59,10 @@ export const useEmployeeStore = defineStore('employees', {
         let totalPages = 2; // знаем заранее (или получаем из первого запроса)
 
         while (page <= totalPages) {
-          const response = await fetch(`https://reqres.in/api/users?page=${page}`);
+          const response = await fetch(`https://reqres.in/api/users?page=${page}`, {
+            headers: { 'x-api-key': 'reqres-free-v1' }
+          });
+
           const result = await response.json();
           const data = result.data || [];
 
@@ -118,22 +121,7 @@ export const useEmployeeStore = defineStore('employees', {
       } finally {
         this.loading = false
       }
-    },
-
-    async fetchAllEmployeesOnce() {
-    if (this.allEmployees.length > 0) return;
-
-    try {
-      const res = await fetch('/employees.json');
-      const data = await res.json();
-      this.allEmployees = data;
-      localStorage.setItem('employees', JSON.stringify(data));
-    } catch (err) {
-      console.error('Ошибка загрузки сотрудников:', err);
-    }
-  }
-
-      
+    },     
 
   }
 }) 
