@@ -1,127 +1,133 @@
 import { defineStore } from 'pinia';
-import type { Employees } from '@/types/Employees';
+import type { EmployeeState, EmployeeGetters, EmployeeActions } from '@/types/GetEmployees';
 import type { NewEmployee } from '@/types/NewEmployee';
+import type { Employees } from '@/types/Employees';
 
-export const useEmployeeStore = defineStore('employees', {
-  state: () => ({
-    employees: [] as Employees[],      // текущая страница
-    allEmployees: [] as Employees[],   // все сотрудники
+export const useEmployeeStore = defineStore<
+  'employees',            
+  EmployeeState,          
+  EmployeeGetters,        
+  EmployeeActions         
+>('employees', {
+  state: () => ({    
+    allEmployees: [],
+    localEmployees: [],    
     loading: false,
     query: '',
-    currentPage: 1,
-    totalPage: 1,
+    currentPage: 1,    
+    perPage: 6
   }),
 
   getters: {
-    filteredEmployees(state): Employees[] {
-      const q = state.query.toLowerCase();
-      return state.allEmployees.filter(e =>
-        e.first_name.toLowerCase().includes(q) ||
-        e.last_name.toLowerCase().includes(q) ||
-        e.email.toLowerCase().includes(q)
+    filteredEmployees(state) {
+      const q = state.query.toLowerCase().trim();
+      return state.allEmployees.filter(emp =>
+        emp.first_name.toLowerCase().includes(q) ||
+        emp.last_name.toLowerCase().includes(q) ||
+        emp.email.toLowerCase().includes(q)
       );
-    },    
-    totalFilteredPages(state): number {
-      const filtered = state.allEmployees.filter(e => {
-        const q = state.query.toLowerCase();
-        return (
-          e.first_name.toLowerCase().includes(q) ||
-          e.last_name.toLowerCase().includes(q) ||
-          e.email.toLowerCase().includes(q)
-        );
-      });
-      return Math.ceil(filtered.length / 6);
     },
-    paginatedEmployees(state): Employees[] {
-      const perPage = 6;
-      const start = (state.currentPage - 1) * perPage;
-      const end = start + perPage;
-      const filtered = state.allEmployees.filter(e => {
-        const q = state.query.toLowerCase();
-        return (
-          e.first_name.toLowerCase().includes(q) ||
-          e.last_name.toLowerCase().includes(q) ||
-          e.email.toLowerCase().includes(q)
-        );
-      });
-      return filtered.slice(start, end);
-    }
+
+    totalPage(state): number {
+      return Math.ceil(this.filteredEmployees.length / state.perPage) || 1;
+    },
+
+    paginatedEmployees(state): typeof state.allEmployees {
+      const start = (state.currentPage - 1) * state.perPage;
+      const end = start + state.perPage;
+      return this.filteredEmployees.slice(start, end);
+    },
 
   },
 
   actions: {
-
+    initStore() {
+      const local = localStorage.getItem("localEmployees");
+      if (local) {
+        try{
+          this.localEmployees = JSON.parse(local);
+        }catch(e){
+          console.error("Ошибка чтения localEmployees:", e);
+          this.localEmployees = []
+        }
+      }  
+    },
+    
     async forceReloadEmployees() {
       try {
         this.loading = true;
-        let allData: Employees[] = [];
+        this.initStore()
+        const serverEmployees = [];
         let page = 1;
-        let totalPages = 2; // знаем заранее (или получаем из первого запроса)
+        let totalPages = 2;
 
         while (page <= totalPages) {
           const response = await fetch(`https://reqres.in/api/users?page=${page}`, {
-            headers: { 'x-api-key': 'reqres-free-v1' }
+            headers: {
+              'x-api-key': 'reqres-free-v1'
+            }
           });
-
           const result = await response.json();
-          const data = result.data || [];
 
-          allData.push(...data);
-          totalPages = result.total_pages; // безопасно обновляем
+          const data = result.data || [];
+          serverEmployees.push(...data);
+          totalPages = result.total_pages;
           page++;
         }
 
-        this.allEmployees = allData;
+        this.allEmployees = [...this.localEmployees, ...serverEmployees];
         this.currentPage = 1;
+
         localStorage.setItem('employees', JSON.stringify(this.allEmployees));
       } catch (error) {
         console.error("Ошибка при загрузке сотрудников:", error);
       } finally {
         this.loading = false;
       }
-    },
-
-
-
-    async fetchEmployees(page = 1, force = false) {
-      this.currentPage = page;
-
-      if (!force) {
-        const cached = localStorage.getItem(`employees-page-${page}`);
-        if (cached) {
-          this.employees = JSON.parse(cached);
-          return;
-        }
-      }
-
-      await this.forceReloadEmployees();
-    },
+    },  
 
     async createEmployees(newEmployee: NewEmployee) {
-      this.loading = true
-      try {
-        const res = await fetch('https://reqres.in/api/users', {
-          method: 'POST',
-          headers: {
-            'x-api-key': 'reqres-free-v1',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(newEmployee)
-        })
-        const data = await res.json();
-        const newEmp: Employees = {
-          id: Number(data.id),
-          email: `${newEmployee.name.replace(' ', '.')}@example.com`,
-          first_name: newEmployee.name.split(' ')[0],
-          last_name: newEmployee.name.split(' ')[1] ?? '',
-          avatar: 'https://i.pravatar.cc/150?img=4'
-        }
-        this.employees.push(newEmp);
-        localStorage.setItem('employees', JSON.stringify(this.employees))
-      } finally {
-        this.loading = false
-      }
-    },     
+      const res = await fetch('https://reqres.in/api/users', {
+        method: 'POST',
+        headers: {
+          'x-api-key': 'reqres-free-v1',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newEmployee)
+      });
+
+      const data = await res.json();
+      const [firstName, lastName] = data.name.split(' ');
+      const email = data.email || 'demo@example.com';
+      const avatar = 'https://i.pravatar.cc/150?u=' + data.name;
+
+      const exists = this.localEmployees.some((emp: Employees) =>
+        emp.first_name === firstName &&
+        emp.last_name === (lastName || '') &&
+        emp.email === email
+      );
+
+      if (exists) return;
+
+      const newEmp = {
+        id: Date.now(),
+        first_name: firstName,
+        last_name: lastName || '',
+        email,
+        avatar
+      };
+
+      this.localEmployees.unshift(newEmp);
+      this.allEmployees = [newEmp, ...this.allEmployees];
+      localStorage.setItem('localEmployees', JSON.stringify(this.localEmployees));
+
+    },
+
+    setSearchQuery(query: string) {
+      this.query = query;
+      this.currentPage = 1;
+    },
 
   }
-}) 
+})
+
